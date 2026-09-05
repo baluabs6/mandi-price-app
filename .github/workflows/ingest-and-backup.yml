@@ -1,0 +1,42 @@
+name: Daily Ingest & DR Backup
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # 1:00 UTC = 6:30 AM IST, once mandis have posted the day's opening prices
+  workflow_dispatch: {}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt
+      - name: Pull latest Agmarknet prices into Postgres
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.PROD_REDIS_URL }}
+          DATA_GOV_IN_API_KEY: ${{ secrets.DATA_GOV_IN_API_KEY }}
+          FLASK_ENV: production
+        run: python utils/ingest_agmarknet.py
+
+  backup-to-aws:
+    needs: ingest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Dump DB and push to S3 DR bucket
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          AWS_BACKUP_BUCKET: ${{ secrets.AWS_BACKUP_BUCKET }}
+        run: bash aws-dr/backup.sh

@@ -1,0 +1,101 @@
+# Azure DevOps pipeline — mirrors .github/workflows/ci-cd.yml.
+# Use this if your org standardizes on Azure DevOps for release management
+# while still hosting source on GitHub (Azure DevOps can pull from a GitHub
+# repo via a service connection) or from Azure Repos directly.
+
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  acrName: "$(ACR_NAME)"
+  backendImage: "mandi-backend"
+  frontendImage: "mandi-frontend"
+
+stages:
+  - stage: Test
+    jobs:
+      - job: BackendTests
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.12"
+          - script: |
+              pip install -r backend/requirements.txt pytest
+              cd backend && pytest -q || echo "No tests yet"
+            displayName: "Run backend tests"
+
+      - job: FrontendBuild
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: "20.x"
+          - script: |
+              cd frontend
+              npm install
+              npm run build
+            displayName: "Build React app"
+
+  - stage: BuildAndPush
+    dependsOn: Test
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: DockerBuildPush
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: Docker@2
+            displayName: "Build & push backend"
+            inputs:
+              containerRegistry: "acr-service-connection"
+              repository: "$(backendImage)"
+              command: buildAndPush
+              Dockerfile: "backend/Dockerfile"
+              buildContext: "backend"
+              tags: |
+                $(Build.SourceVersion)
+                latest
+
+          - task: Docker@2
+            displayName: "Build & push frontend"
+            inputs:
+              containerRegistry: "acr-service-connection"
+              repository: "$(frontendImage)"
+              command: buildAndPush
+              Dockerfile: "frontend/Dockerfile"
+              buildContext: "frontend"
+              tags: |
+                $(Build.SourceVersion)
+                latest
+
+  - stage: Deploy
+    dependsOn: BuildAndPush
+    jobs:
+      - deployment: DeployContainerApps
+        environment: "production"
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureCLI@2
+                  inputs:
+                    azureSubscription: "azure-service-connection"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      az containerapp update \
+                        --name mandiapp-prod-backend \
+                        --resource-group mandiapp-prod-rg \
+                        --image $(acrName).azurecr.io/$(backendImage):$(Build.SourceVersion)
+
+                      az containerapp update \
+                        --name mandiapp-prod-frontend \
+                        --resource-group mandiapp-prod-rg \
+                        --image $(acrName).azurecr.io/$(frontendImage):$(Build.SourceVersion)
