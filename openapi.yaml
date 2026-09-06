@@ -1,0 +1,173 @@
+openapi: 3.0.3
+info:
+  title: Mandi Bhav API
+  version: "1.1.0"
+  description: >
+    Daily mandi (market) crop price API, sourced from Agmarknet / data.gov.in.
+servers:
+  - url: /api
+paths:
+  /health:
+    get:
+      summary: Liveness check
+      responses:
+        "200":
+          description: OK
+
+  /states:
+    get:
+      summary: List states
+      parameters:
+        - $ref: "#/components/parameters/lang"
+      responses:
+        "200":
+          description: List of states
+
+  /districts:
+    get:
+      summary: List districts, optionally filtered by state
+      parameters:
+        - $ref: "#/components/parameters/lang"
+        - in: query
+          name: state_id
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List of districts
+
+  /crops:
+    get:
+      summary: List crops, optionally filtered by category
+      parameters:
+        - $ref: "#/components/parameters/lang"
+        - in: query
+          name: category
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of crops
+
+  /prices:
+    get:
+      summary: Daily prices, paginated and filterable
+      parameters:
+        - $ref: "#/components/parameters/lang"
+        - in: query
+          name: crop_id
+          schema: { type: integer }
+        - in: query
+          name: district_id
+          schema: { type: integer }
+        - in: query
+          name: state_id
+          schema: { type: integer }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        "200":
+          description: Paginated price results
+        "400":
+          description: Invalid date format
+
+  /prices/trend:
+    get:
+      summary: Historical trend for one crop at one market (sparkline data)
+      parameters:
+        - in: query
+          name: crop_id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: market_id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: days
+          schema: { type: integer, default: 30, maximum: 90 }
+      responses:
+        "200":
+          description: Ordered list of {date, modal_price}
+        "400":
+          description: Missing required params
+
+  /prices/anomalies:
+    get:
+      summary: Prices that deviate sharply from their market's trailing 7-day average
+      parameters:
+        - $ref: "#/components/parameters/lang"
+        - in: query
+          name: state_id
+          schema: { type: integer }
+        - in: query
+          name: district_id
+          schema: { type: integer }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: deviation_pct
+          schema: { type: number, default: 25 }
+      responses:
+        "200":
+          description: Flagged anomalies with baseline price and % deviation
+
+  /prices/forecast:
+    get:
+      summary: Short-term linear-trend price projection (directional, not a guaranteed price)
+      parameters:
+        - in: query
+          name: crop_id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: market_id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: days_ahead
+          schema: { type: integer, default: 7, maximum: 14 }
+        - in: query
+          name: history_days
+          schema: { type: integer, default: 30, maximum: 90 }
+      responses:
+        "200":
+          description: Forecast points with a confidence score per point
+        "400":
+          description: Missing required params
+
+  /ask:
+    post:
+      summary: Natural-language Q&A over the price database (RAG + LLM)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string, maxLength: 500 }
+                lang: { type: string, enum: [en, hi, te], default: en }
+      responses:
+        "200":
+          description: >
+            Grounded answer plus which crop/state/district were matched
+            and how many records were used. If ANTHROPIC_API_KEY isn't
+            configured, `assistant_enabled` is false and `answer` is a
+            plain fallback built directly from the latest matching record.
+        "400":
+          description: Missing or too-long question
+
+components:
+  parameters:
+    lang:
+      in: query
+      name: lang
+      schema: { type: string, enum: [en, hi, te], default: en }

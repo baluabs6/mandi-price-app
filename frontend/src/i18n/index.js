@@ -22,6 +22,15 @@ const resources = {
       no_data: "No price data for this selection yet.",
       trend_7d: "7-day trend",
       source_note: "Prices sourced from Agmarknet / data.gov.in government data.",
+      per_quintal: "per quintal",
+      per_kg: "per kg",
+      load_more: "Load more",
+      showing_of: "Showing {{shown}} of {{total}}",
+      ask_placeholder: "Ask about a crop price, e.g. \"onion price in Hyderabad\"",
+      ask_button: "Ask",
+      ask_thinking: "Checking prices...",
+      ask_error: "Could not get an answer right now.",
+      anomaly_badge: "Unusual price",
     },
   },
   hi: {
@@ -44,6 +53,15 @@ const resources = {
       no_data: "इस चयन के लिए अभी कोई डेटा नहीं है।",
       trend_7d: "7-दिन का रुझान",
       source_note: "मूल्य Agmarknet / data.gov.in सरकारी डेटा से लिए गए हैं।",
+      per_quintal: "प्रति क्विंटल",
+      per_kg: "प्रति किलो",
+      load_more: "और देखें",
+      showing_of: "{{total}} में से {{shown}} दिखाए जा रहे हैं",
+      ask_placeholder: "किसी फसल के भाव के बारे में पूछें, जैसे \"हैदराबाद में प्याज का भाव\"",
+      ask_button: "पूछें",
+      ask_thinking: "भाव जांचे जा रहे हैं...",
+      ask_error: "अभी उत्तर नहीं मिल सका।",
+      anomaly_badge: "असामान्य भाव",
     },
   },
   te: {
@@ -66,15 +84,47 @@ const resources = {
       no_data: "ఈ ఎంపికకు ఇంకా డేటా లేదు.",
       trend_7d: "7-రోజుల ధోరణి",
       source_note: "ధరలు Agmarknet / data.gov.in ప్రభుత్వ డేటా నుండి తీసుకోబడ్డాయి.",
+      per_quintal: "క్వింటాలుకు",
+      per_kg: "కిలోకు",
+      load_more: "మరిన్ని చూడండి",
+      showing_of: "{{total}} లో {{shown}} చూపబడుతున్నాయి",
+      ask_placeholder: "పంట ధర గురించి అడగండి, ఉదా. \"హైదరాబాద్‌లో ఉల్లిపాయ ధర\"",
+      ask_button: "అడగండి",
+      ask_thinking: "ధరలు తనిఖీ చేస్తోంది...",
+      ask_error: "ఇప్పుడు సమాధానం పొందడం సాధ్యం కాలేదు.",
+      anomaly_badge: "అసాధారణ ధర",
     },
   },
 };
 
+const LANG_STORAGE_KEY = "mandi-bhav-lang";
+
+function getInitialLanguage() {
+  try {
+    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved && resources[saved]) return saved;
+  } catch (e) {
+    // localStorage can throw in private-browsing/sandboxed contexts — fall
+    // through to the default rather than crashing app boot.
+  }
+  return "hi"; // default to Hindi — target users are farmers, not urban English readers
+}
+
 i18n.use(initReactI18next).init({
   resources,
-  lng: "hi", // default to Hindi — target users are farmers, not urban English readers
+  lng: getInitialLanguage(),
   fallbackLng: "en",
   interpolation: { escapeValue: false },
+});
+
+// Persist the user's language choice across visits instead of resetting to
+// Hindi on every reload.
+i18n.on("languageChanged", (lng) => {
+  try {
+    window.localStorage.setItem(LANG_STORAGE_KEY, lng);
+  } catch (e) {
+    // ignore storage errors (e.g. private browsing)
+  }
 });
 
 export default i18n;

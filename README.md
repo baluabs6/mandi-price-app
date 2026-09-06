@@ -81,8 +81,52 @@ directly) and set `DATA_GOV_IN_RESOURCE_ID` if it differs from the default.
 | `GET /api/states?lang=hi` | list states |
 | `GET /api/districts?state_id=&lang=` | list districts |
 | `GET /api/crops?lang=` | list crops |
-| `GET /api/prices?crop_id=&district_id=&state_id=&date=&lang=` | daily prices, paginated |
+| `GET /api/prices?crop_id=&district_id=&state_id=&date=&lang=&page=&per_page=` | daily prices, paginated |
 | `GET /api/prices/trend?crop_id=&market_id=&days=30` | price history for a sparkline |
+| `GET /api/prices/anomalies?state_id=&district_id=&deviation_pct=25` | prices that deviate sharply from a market's trailing 7-day average |
+| `GET /api/prices/forecast?crop_id=&market_id=&days_ahead=7` | short-term linear-trend price projection, with a confidence score |
+| `POST /api/ask` | natural-language Q&A over the price data (RAG + Claude); `{"question": "...", "lang": "hi"}` |
+
+Full spec: [`openapi.yaml`](./openapi.yaml).
+
+## AI assistant (`/api/ask`)
+
+A small retrieval-augmented endpoint: it fuzzy-matches crop/state/district
+names mentioned in the question against what's actually in the DB, pulls
+the last 14 days of matching `PriceRecord`s, and asks Claude to answer
+*only* from that retrieved data (never invents a price). Set
+`ANTHROPIC_API_KEY` (get one at https://console.anthropic.com/) to enable
+it — without a key the endpoint still responds, just with a plain
+"latest record" fallback instead of an LLM-generated answer, so it's safe
+to ship before a key is provisioned.
+
+Anomaly detection and forecasting are deliberately **not** ML models —
+rule-based deviation-from-trailing-average and least-squares trend
+fitting respectively. See the docstrings in `backend/utils/anomaly.py`
+and `backend/utils/forecast.py` for why that trade-off makes sense at
+this data volume.
+
+## Database migrations
+
+Schema changes are managed with Flask-Migrate (Alembic), not
+`db.create_all()`/`drop_all()` (those remain in `seed_data.py`, which is
+demo-only and drops all data):
+
+```bash
+cd backend
+flask db upgrade          # apply all migrations to the current DATABASE_URL
+flask db migrate -m "..."  # after changing models.py, generate a new migration
+```
+
+## Running tests
+
+```bash
+# backend — no live Postgres/Redis needed, falls back to in-memory SQLite
+cd backend && pip install -r requirements-dev.txt && pytest -q
+
+# frontend
+cd frontend && npm install && CI=true npm test -- --watchAll=false
+```
 
 ## Deploying to Azure
 
@@ -107,7 +151,8 @@ docker push mandiappacr.azurecr.io/mandi-frontend:latest
 Required GitHub Actions secrets: `ACR_NAME`, `ACR_USERNAME`, `ACR_PASSWORD`,
 `AZURE_CREDENTIALS`, `PROD_DATABASE_URL`, `PROD_REDIS_URL`,
 `DATA_GOV_IN_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-`AWS_BACKUP_BUCKET`.
+`AWS_BACKUP_BUCKET`, `ANTHROPIC_API_KEY` (optional — enables the `/api/ask`
+assistant; the app runs fine without it).
 
 ## Disaster recovery (AWS)
 
@@ -128,5 +173,26 @@ back up on AWS.
 - Price-trend push notifications ("onion prices in your district rose 12%
   this week").
 - More regional languages (Marathi, Tamil, Punjabi, Kannada, Bengali).
-- A simple "report a suspicious price" community flag to catch middleman
-  manipulation or stale data.
+- A user-facing "report a suspicious price" community flag, complementing
+  the automated `/api/prices/anomalies` detection now in place.
+- Swap the rule-based `/api/prices/forecast` for a proper time-series
+  model once there's enough historical depth (months, not weeks) to
+  justify one.
+- Cloud hardening items that need real account access to do safely —
+  see "Known follow-ups" below.
+
+## Known follow-ups (need real cloud credentials — not done in this repo)
+
+- Move DB/Redis connection strings out of Terraform-interpolated Container
+  App secrets and into Azure Key Vault references.
+- Restrict the Postgres flexible server firewall rule (currently
+  `allow_azure_services`, open to any Azure tenant) to a VNet/private
+  endpoint.
+- Switch ACR auth from admin username/password to managed identity.
+- Replace the long-lived `AZURE_CREDENTIALS` / `AWS_ACCESS_KEY_ID` GitHub
+  secrets with OIDC federated login for both clouds.
+- Put a WAF / Azure Front Door in front of the public Container App
+  ingress.
+- Encrypt DR backups with a customer-managed KMS key instead of relying
+  solely on S3's default SSE-S3.
+

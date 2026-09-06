@@ -1,9 +1,11 @@
 from datetime import date, timedelta
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from extensions import cache, db, limiter
 from models import Crop, District, Market, PriceRecord, State
+from utils.anomaly import find_anomalies
+from utils.forecast import forecast_prices
 
 prices_bp = Blueprint("prices", __name__, url_prefix="/api")
 
@@ -149,6 +151,100 @@ def price_trend():
     )
     return jsonify(
         [{"date": r.price_date.isoformat(), "modal_price": float(r.modal_price or 0)} for r in records]
+    )
+
+
+@prices_bp.route("/prices/anomalies", methods=["GET"])
+@limiter.limit("30 per minute")
+@cache.cached(timeout=15 * 60, query_string=True)
+def price_anomalies():
+    """Flags today's (or a given date's) prices that deviate sharply from
+    each market's own trailing 7-day average — a cheap, explainable
+    signal for stale/bad ingestion rows or possible middleman price
+    manipulation, without needing a trained model."""
+    lang = _lang()
+    state_id = request.args.get("state_id", type=int)
+    district_id = request.args.get("district_id", type=int)
+    price_date_str = request.args.get("date")
+    deviation_pct = request.args.get(
+        "deviation_pct", default=current_app.config["ANOMALY_DEVIATION_PCT"], type=float
+    )
+
+    q = PriceRecord.query.join(Market).join(District).join(State)
+    if district_id:
+        q = q.filter(Market.district_id == district_id)
+    elif state_id:
+        q = q.filter(District.state_id == state_id)
+
+    if price_date_str:
+        try:
+            target_date = date.fromisoformat(price_date_str)
+        except ValueError:
+            return jsonify({"error": "date must be YYYY-MM-DD"}), 400
+    else:
+        target_date = q.with_entities(db.func.max(PriceRecord.price_date)).scalar()
+        if target_date is None:
+            return jsonify({"anomalies": [], "date": None})
+
+    records = q.filter(PriceRecord.price_date == target_date).all()
+    flagged = find_anomalies(records, deviation_pct=deviation_pct)
+
+    return jsonify(
+        {
+            "date": target_date.isoformat(),
+            "deviation_threshold_pct": deviation_pct,
+            "anomalies": [
+                {
+                    **f["record"].to_dict(lang=lang),
+                    "baseline_avg_price": f["baseline_avg_price"],
+                    "deviation_pct": f["deviation_pct"],
+                }
+                for f in flagged
+            ],
+        }
+    )
+
+
+@prices_bp.route("/prices/forecast", methods=["GET"])
+@limiter.limit("30 per minute")
+@cache.cached(timeout=60 * 60, query_string=True)
+def price_forecast():
+    """Short-term linear-trend projection for one crop at one market.
+    Explicitly a directional signal (see utils/forecast.py docstring),
+    not a precise price prediction — the `confidence` field reflects
+    that and should be surfaced in the UI, not hidden."""
+    crop_id = request.args.get("crop_id", type=int)
+    market_id = request.args.get("market_id", type=int)
+    days_ahead = min(
+        request.args.get("days_ahead", default=7, type=int),
+        current_app.config["FORECAST_MAX_DAYS"],
+    )
+    history_days = min(request.args.get("history_days", default=30, type=int), 90)
+
+    if not (crop_id and market_id):
+        return jsonify({"error": "crop_id and market_id are required"}), 400
+
+    since = date.today() - timedelta(days=history_days)
+    records = (
+        PriceRecord.query.filter(
+            PriceRecord.crop_id == crop_id,
+            PriceRecord.market_id == market_id,
+            PriceRecord.price_date >= since,
+        )
+        .order_by(PriceRecord.price_date.asc())
+        .all()
+    )
+    history = [(r.price_date, float(r.modal_price) if r.modal_price is not None else None) for r in records]
+    forecast = forecast_prices(history, days_ahead=days_ahead)
+
+    return jsonify(
+        {
+            "crop_id": crop_id,
+            "market_id": market_id,
+            "history_points_used": len(history),
+            "forecast": forecast,
+            "note": "Directional linear-trend estimate, not a guaranteed price. See 'confidence' per point.",
+        }
     )
 
 

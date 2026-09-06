@@ -13,6 +13,7 @@ import logging
 import os
 import sys
 from datetime import date
+from difflib import get_close_matches
 
 import requests
 
@@ -62,20 +63,48 @@ def get_or_create_district(name_en, state):
 
 
 def get_or_create_market(name_en, district):
+    name_en = name_en.strip()
     market = Market.query.filter_by(name_en=name_en, district_id=district.id).first()
-    if not market:
-        market = Market(name_en=name_en, district_id=district.id)
-        db.session.add(market)
-        db.session.flush()
+    if market:
+        return market
+
+    existing = {m.name_en.lower(): m for m in Market.query.filter_by(district_id=district.id).all()}
+    match_key = _fuzzy_find(name_en, existing.keys())
+    if match_key:
+        logger.info("Fuzzy-matched market '%s' -> existing '%s'", name_en, existing[match_key].name_en)
+        return existing[match_key]
+
+    market = Market(name_en=name_en, district_id=district.id)
+    db.session.add(market)
+    db.session.flush()
     return market
 
 
+def _fuzzy_find(name_en, existing_names, cutoff=0.9):
+    """Match against known names before creating a new row, so a feed
+    variance like 'Onion' vs 'Onions' or a stray whitespace/typo doesn't
+    silently fragment one crop/market into duplicate DB rows (a gap
+    flagged in the original review: exact-match get_or_create was
+    fragmenting the catalog on messy government feed data)."""
+    matches = get_close_matches(name_en.strip().lower(), existing_names, n=1, cutoff=cutoff)
+    return matches[0] if matches else None
+
+
 def get_or_create_crop(name_en):
+    name_en = name_en.strip()
     crop = Crop.query.filter_by(name_en=name_en).first()
-    if not crop:
-        crop = Crop(name_en=name_en)
-        db.session.add(crop)
-        db.session.flush()
+    if crop:
+        return crop
+
+    existing = {c.name_en.lower(): c for c in Crop.query.all()}
+    match_key = _fuzzy_find(name_en, existing.keys())
+    if match_key:
+        logger.info("Fuzzy-matched crop '%s' -> existing '%s'", name_en, existing[match_key].name_en)
+        return existing[match_key]
+
+    crop = Crop(name_en=name_en)
+    db.session.add(crop)
+    db.session.flush()
     return crop
 
 

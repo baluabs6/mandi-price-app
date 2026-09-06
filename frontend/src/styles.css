@@ -148,3 +148,128 @@ body {
   .price-table td { border: none; padding: 6px 8px; white-space: normal; }
   .price-table td::before { content: attr(data-label) ": "; font-weight: 600; color: #555; }
 }
+
+/* --- Unit toggle ------------------------------------------------- */
+.unit-toggle {
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.unit-toggle label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+/* --- Anomaly flags ------------------------------------------------ */
+.anomaly-row {
+  background: #fff7ed;
+}
+
+.anomaly-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f59e0b;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* --- Trend sparkline ------------------------------------------------ */
+.trend-chart {
+  width: 100px;
+  height: 32px;
+}
+
+/* --- Ask assistant --------------------------------------------------- */
+.ask-assistant {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.ask-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ask-form input {
+  flex: 1 1 240px;
+  padding: 10px;
+  font-size: 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.ask-form button {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: none;
+  background: var(--green);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ask-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ask-status {
+  padding: 12px 0;
+}
+
+.ask-answer {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.ask-degraded-note {
+  margin: 6px 0 0 0;
+  font-size: 0.75rem;
+  color: #888;
+}
+
+/* --- Pagination -------------------------------------------------- */
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pagination-status {
+  color: #666;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.load-more-btn {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--green);
+  background: white;
+  color: var(--green-dark);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

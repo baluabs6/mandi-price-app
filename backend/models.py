@@ -82,6 +82,8 @@ class PriceRecord(db.Model):
 
         return {
             "id": self.id,
+            "crop_id": self.crop_id,
+            "market_id": self.market_id,
             "crop": name(self.crop),
             "variety": self.variety,
             "grade": self.grade,

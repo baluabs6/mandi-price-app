@@ -1,6 +1,12 @@
 """Populate the DB with a small, realistic sample so the frontend has
 something to show without needing a data.gov.in API key. Run:
     python seed_data.py
+
+NOTE: this calls db.drop_all()/create_all() directly and is only meant
+for local/demo use. For any real deployment, manage the schema with
+Flask-Migrate instead (`flask db upgrade`) so you get versioned,
+reversible migrations instead of a full table drop:
+    flask db upgrade        # apply migrations/versions/*
 """
 from datetime import date, timedelta
 import random

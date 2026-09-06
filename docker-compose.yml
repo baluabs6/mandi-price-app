@@ -35,6 +35,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: http://localhost:3000,http://localhost:8080
       DATA_GOV_IN_API_KEY: ${DATA_GOV_IN_API_KEY:-}
+      SECRET_KEY: ${SECRET_KEY:-dev-only-insecure-key-do-not-use-in-prod}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
     depends_on:
       postgres:
         condition: service_healthy

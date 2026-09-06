@@ -11,6 +11,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Run as a non-root user — the original image ran gunicorn as root.
+RUN groupadd -r app && useradd -r -g app app \
+    && chown -R app:app /app
+USER app
+
 ENV FLASK_ENV=production \
     PORT=5000
 
