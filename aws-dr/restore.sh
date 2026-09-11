@@ -14,8 +14,8 @@ set -euo pipefail
 
 BUCKET="${AWS_BACKUP_BUCKET:?Set AWS_BACKUP_BUCKET}"
 RDS_ENDPOINT="${RDS_ENDPOINT:?Set RDS_ENDPOINT (create the RDS instance first, e.g. via aws rds create-db-instance)}"
-RDS_USER="${RDS_USER:-mandi_admin}"
-RDS_DB="${RDS_DB:-mandi_db}"
+RDS_USER="${RDS_USER:-<YOUR_DB_ADMIN_USER>}"
+RDS_DB="${RDS_DB:-<YOUR_DB_NAME>}"
 
 echo "Finding latest backup in s3://${BUCKET} ..."
 LATEST=$(aws s3 ls "s3://${BUCKET}/" | sort | tail -n 1 | awk '{print $4}')

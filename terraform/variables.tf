@@ -18,7 +18,7 @@ variable "location" {
 
 variable "postgres_admin_username" {
   type    = string
-  default = "mandi_admin"
+  default = "<YOUR_DB_ADMIN_USER>"
 }
 
 variable "postgres_admin_password" {

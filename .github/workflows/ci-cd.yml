@@ -29,9 +29,9 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: mandi_test_db
-          POSTGRES_USER: mandi_user
-          POSTGRES_PASSWORD: mandi_pass
+          POSTGRES_DB: <YOUR_TEST_DB_NAME>
+          POSTGRES_USER: <YOUR_DB_USER>
+          POSTGRES_PASSWORD: <YOUR_DB_PASSWORD>
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 5
@@ -138,15 +138,15 @@ jobs:
       - name: Update Container Apps to new image
         run: |
           az containerapp update \
-            --name mandiapp-prod-backend \
-            --resource-group mandiapp-prod-rg \
+            --name <YOUR_PROD_BACKEND_APP_NAME> \
+            --resource-group <YOUR_PROD_RESOURCE_GROUP> \
             --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.BACKEND_IMAGE }}:${{ github.sha }}
 
           az containerapp update \
-            --name mandiapp-prod-frontend \
-            --resource-group mandiapp-prod-rg \
+            --name <YOUR_PROD_FRONTEND_APP_NAME> \
+            --resource-group <YOUR_PROD_RESOURCE_GROUP> \
             --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
 
       - name: Smoke test
         run: |
-          curl -f https://mandiapp-prod-backend.azurecontainerapps.io/api/health
+          curl -f https://<YOUR_PROD_BACKEND_URL>/api/health

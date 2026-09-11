@@ -91,11 +91,11 @@ stages:
                     scriptLocation: inlineScript
                     inlineScript: |
                       az containerapp update \
-                        --name mandiapp-prod-backend \
-                        --resource-group mandiapp-prod-rg \
+                        --name <YOUR_PROD_BACKEND_APP_NAME> \
+                        --resource-group <YOUR_PROD_RESOURCE_GROUP> \
                         --image $(acrName).azurecr.io/$(backendImage):$(Build.SourceVersion)
 
                       az containerapp update \
-                        --name mandiapp-prod-frontend \
-                        --resource-group mandiapp-prod-rg \
+                        --name <YOUR_PROD_FRONTEND_APP_NAME> \
+                        --resource-group <YOUR_PROD_RESOURCE_GROUP> \
                         --image $(acrName).azurecr.io/$(frontendImage):$(Build.SourceVersion)

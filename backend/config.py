@@ -16,7 +16,7 @@ def _get_secret_key(env):
             "Refusing to start in production with a default key. "
             "Set SECRET_KEY (e.g. from Azure Key Vault / a GitHub secret)."
         )
-    return "dev-only-insecure-key-do-not-use-in-prod"
+    return "<CHANGE_ME_RANDOM_SECRET>"
 
 
 class Config:
@@ -29,7 +29,7 @@ class Config:
     # --- PostgreSQL -------------------------------------------------
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL",
-        "postgresql://mandi_user:mandi_pass@localhost:5432/mandi_db",
+        "postgresql://<YOUR_DB_USER>:<YOUR_DB_PASSWORD>@localhost:5432/<YOUR_DB_NAME>",
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
