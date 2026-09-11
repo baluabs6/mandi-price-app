@@ -105,3 +105,68 @@
 - **Local development** — `docker-compose.yml` runs the full stack
   (Postgres, Redis, backend, frontend) locally in one command.
 
+## Security
+
+### Secrets management
+
+- No credentials are hardcoded in application code. Local secrets are
+  supplied via a `.env` file (gitignored, based on `.env.example`); in
+  CI/CD and production they come from GitHub Actions secrets and
+  Container App secrets.
+- `SECRET_KEY` fails loudly at startup in production if it isn't set,
+  rather than silently falling back to a default value — the app refuses
+  to boot instead of running insecurely.
+- The `ANTHROPIC_API_KEY` and `DATA_GOV_IN_API_KEY` are optional at
+  runtime: their absence disables the related feature (AI assistant /
+  live ingestion) instead of crashing the app.
+
+### Application-layer protections
+
+- **CORS** is restricted to an explicit allow-list (`CORS_ORIGINS`)
+  rather than `*`.
+- **Rate limiting** (`flask-limiter`) protects the public API from
+  scraping/abuse, backed by Redis with an in-memory fallback so limiting
+  stays active even during a Redis outage.
+- **Security headers** are set on every response: `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, a restrictive
+  `Content-Security-Policy`, and `Strict-Transport-Security` in
+  non-debug mode.
+- The app trusts exactly one reverse-proxy hop (`ProxyFix`), so
+  rate-limiting and logging see the real client IP rather than the
+  proxy's.
+
+### CI/CD security checks
+
+- Every push/PR runs a **secret-scanning** job (gitleaks) before any
+  build or deploy step.
+- **Dependency vulnerability scans** run on both backend (`pip-audit`)
+  and frontend (`npm audit`) dependencies.
+- **Container image scanning** (Trivy) checks built images for known
+  CVEs before deployment.
+
+### Data protection
+
+- DR backups to S3 are server-side encrypted (SSE-AES256) and lifecycle
+  managed (old versions expire automatically).
+- Redis connections in production use TLS (`rediss://`).
+- Database credentials and connection strings are injected as Container
+  App secrets, not stored in Terraform state as plain variables or
+  committed to the repo.
+
+### Known hardening follow-ups
+
+These need real cloud account access to do safely and aren't implemented
+in this repo yet:
+
+- Move DB/Redis connection strings out of Terraform-interpolated
+  Container App secrets and into Azure Key Vault references.
+- Restrict the Postgres flexible server firewall rule (currently open to
+  any Azure tenant) to a VNet/private endpoint.
+- Switch ACR auth from admin username/password to managed identity.
+- Replace the long-lived `AZURE_CREDENTIALS` / AWS access-key GitHub
+  secrets with OIDC federated login for both clouds.
+- Put a WAF / Azure Front Door in front of the public Container App
+  ingress.
+- Encrypt DR backups with a customer-managed KMS key instead of relying
+  solely on S3's default SSE-S3.
+
