@@ -144,7 +144,7 @@ paths:
 
   /ask:
     post:
-      summary: Natural-language Q&A over the price database (RAG + LLM)
+      summary: Natural-language Q&A over the price database (LLM tool use + RAG fallback)
       requestBody:
         required: true
         content:
@@ -155,15 +155,29 @@ paths:
               properties:
                 question: { type: string, maxLength: 500 }
                 lang: { type: string, enum: [en, hi, te], default: en }
+                history:
+                  type: array
+                  description: >
+                    Optional recent chat turns (last 6 are used) so follow-ups
+                    like "and in Warangal?" resolve. Malformed entries are dropped.
+                  items:
+                    type: object
+                    properties:
+                      role: { type: string, enum: [user, assistant] }
+                      content: { type: string, maxLength: 1000 }
       responses:
         "200":
           description: >
-            Grounded answer plus which crop/state/district were matched
-            and how many records were used. If ANTHROPIC_API_KEY isn't
-            configured, `assistant_enabled` is false and `answer` is a
-            plain fallback built directly from the latest matching record.
+            Grounded answer plus which crop/state/district were matched,
+            how many records were used, and the `sources` (up to 10 price
+            records) the answer is based on. `mode` is `tools` (LLM queried
+            the database via tools), `retrieval` (LLM summarised retrieved
+            rows) or `fallback` (plain latest-record answer). If
+            ANTHROPIC_API_KEY isn't configured, `assistant_enabled` is false.
         "400":
-          description: Missing or too-long question
+          description: Missing or too-long question, or malformed history
+        "429":
+          description: Rate limit exceeded (10/minute and 100/day per client)
 
 components:
   parameters:

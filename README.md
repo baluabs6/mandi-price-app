@@ -102,7 +102,7 @@ sequenceDiagram
     FE-->>U: Price table / cards + trend chart
 ```
 
-### Request flow — AI assistant (grounded RAG)
+### Request flow — AI assistant (grounded tool use)
 
 ```mermaid
 sequenceDiagram
@@ -111,23 +111,30 @@ sequenceDiagram
     participant FE as AskAssistant.jsx
     participant API as POST /api/ask
     participant RAG as services/rag.py
+    participant T as services/tools.py
     participant DB as PostgreSQL
     participant LLM as Anthropic Claude
 
-    U->>FE: "आज गुंटूर में टमाटर का भाव?"
-    FE->>API: { question, lang }
-    API->>API: Validate (≤ 500 chars) + rate-limit (10/min)
+    U->>FE: Types or speaks "आज गुंटूर में टमाटर का भाव?"
+    FE->>API: { question, lang, history (last 6 turns) }
+    API->>API: Validate + rate-limit (10/min, 100/day) + answer cache
     API->>RAG: answer_question()
-    RAG->>DB: Fuzzy-match crop / state / district names
-    RAG->>DB: Fetch matching PriceRecords (last 14 days, up to 30 rows)
     alt API key configured
-        RAG->>LLM: System prompt + retrieved records (answer ONLY from data)
+        loop until final answer (max 4 rounds)
+            RAG->>LLM: Conversation + tool definitions
+            LLM-->>RAG: tool_use (e.g. get_best_markets)
+            RAG->>T: Run tool
+            T->>DB: Read-only query
+            DB-->>T: Rows
+            T-->>RAG: Result (+ records recorded as sources)
+        end
         LLM-->>RAG: Short answer in requested language
     else No key / LLM error
+        RAG->>DB: Fuzzy-match names, fetch recent PriceRecords
         RAG-->>API: Plain "latest record" fallback
     end
-    API-->>FE: { answer, matched, records_used, assistant_enabled }
-    FE-->>U: Answer shown in chat panel
+    API-->>FE: { answer, matched, records_used, sources, mode, assistant_enabled }
+    FE-->>U: Answer + sources, optional read-aloud
 ```
 
 ### Delivery pipeline & environments
@@ -211,12 +218,18 @@ erDiagram
   price data from the official data.gov.in API mirror of Agmarknet on a
   schedule and loads it into Postgres, fuzzy-matching crop/market names
   against existing records.
-- **AI assistant (`backend/services/rag.py`, `services/llm.py`)** — a
-  lightweight retrieval-augmented endpoint: it matches crop/state/district
-  names mentioned in a question against the DB, retrieves the relevant
-  recent price records, and asks an LLM to answer strictly from that data.
-  Falls back to a plain "latest record" response when no LLM key is
-  configured.
+- **AI assistant (`backend/services/rag.py`, `tools.py`, `llm.py`)** — the
+  LLM is given read-only database tools (best markets, latest prices,
+  trend, anomalies, forecast) that reuse the same logic as the REST
+  endpoints, so it answers only from real data and can handle follow-up
+  questions using recent chat turns. Each answer returns the `sources`
+  (price records) it is based on. If the tool-use call fails it degrades
+  to rule-based retrieval, and with no LLM key to a plain "latest record"
+  response. Identical standalone questions are cached for 15 minutes, and
+  `/api/ask` is limited to 10/minute and 100/day per client.
+- **Voice (frontend)** — `AskAssistant.jsx` uses the browser's speech
+  APIs for spoken questions and read-aloud answers in Hindi, Telugu and
+  English; the controls only appear where the browser supports them.
 - **Anomaly & forecast utilities (`backend/utils/anomaly.py`,
   `forecast.py`)** — rule-based deviation-from-trailing-average and
   least-squares trend calculations (not ML models), used by the

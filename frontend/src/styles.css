@@ -273,3 +273,52 @@ body {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* --- Ask assistant: chat turns, voice, sources ------------------------ */
+.ask-form .ask-icon-btn {
+  padding: 10px 12px;
+  background: white;
+  color: inherit;
+  border: 1px solid var(--border);
+  font-size: 1.1rem;
+}
+
+.ask-form .ask-icon-btn.is-active {
+  background: #fdecea;
+  border-color: #d9534f;
+}
+
+.ask-turn {
+  margin-top: 12px;
+}
+
+.ask-question {
+  margin: 0 0 4px 0;
+  font-weight: 700;
+}
+
+.ask-speak-btn,
+.ask-reset-btn {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: white;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.ask-sources {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #555;
+}
+
+.ask-sources summary {
+  cursor: pointer;
+}
+
+.ask-sources ul {
+  margin: 6px 0 0 0;
+  padding-left: 18px;
+}

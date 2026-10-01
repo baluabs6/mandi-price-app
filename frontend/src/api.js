@@ -54,5 +54,5 @@ export const api = {
       days_ahead: daysAhead,
       history_days: historyDays,
     }),
-  ask: (question, lang) => post("/ask", { question, lang }),
+  ask: (question, lang, history = []) => post("/ask", { question, lang, history }),
 };
