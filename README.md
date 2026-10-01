@@ -18,35 +18,174 @@
 
 ### High-level overview
 
+```mermaid
+flowchart LR
+    user(["👩‍🌾 Farmer / User<br/>(mobile or desktop browser)"])
+
+    subgraph azure["☁️ Azure — Primary (Container Apps Environment)"]
+        direction LR
+        fe["<b>Frontend</b><br/>React 18 SPA served by nginx<br/>i18n: Hindi · Telugu · English"]
+
+        subgraph be["<b>Backend</b> — Flask REST API (app.py factory)"]
+            direction TB
+            mw["Cross-cutting middleware<br/>ProxyFix · CORS allow-list · Rate limiter<br/>Security headers · JSON error handlers"]
+            r1["routes/prices.py<br/>/api/states · districts · crops<br/>/api/prices · prices/trend<br/>/api/prices/anomalies · prices/forecast<br/>/api/health"]
+            r2["routes/assistant.py<br/>POST /api/ask"]
+            u["utils/anomaly.py · utils/forecast.py<br/>(rule-based, explainable)"]
+            rag["services/rag.py<br/>entity matching + retrieval"]
+            llm["services/llm.py<br/>Anthropic Messages client"]
+            orm["SQLAlchemy models<br/>+ Alembic migrations"]
+            mw --> r1
+            mw --> r2
+            r1 --> u
+            r2 --> rag --> llm
+            r1 --> orm
+            rag --> orm
+        end
+
+        pg[("<b>PostgreSQL</b><br/>Flexible Server<br/>states · districts · markets<br/>crops · price_records")]
+        redis[("<b>Redis</b><br/>Azure Cache<br/>response cache + rate-limit counters<br/>(in-memory fallback)")]
+        logs["Log Analytics"]
+    end
+
+    claude["🤖 Anthropic Claude API<br/>(optional — only if ANTHROPIC_API_KEY is set)"]
+
+    subgraph ingest["⏰ Nightly job — GitHub Actions (01:00 UTC)"]
+        job["utils/ingest_agmarknet.py<br/>fuzzy-match crops / markets → upsert"]
+    end
+    govt["🏛️ data.gov.in<br/>Agmarknet open API"]
+
+    subgraph aws["☁️ AWS — Disaster Recovery"]
+        s3[("S3 bucket<br/>encrypted pg_dump backups<br/>versioned + lifecycle")]
+        ecr["ECR<br/>backend image mirror"]
+        rds["RDS Postgres<br/>(created only on restore)"]
+    end
+
+    user -- "HTTPS" --> fe
+    fe -- "/api/* reverse-proxy" --> mw
+    orm <--> pg
+    mw <-. "cache · rate limit" .-> redis
+    llm -- "HTTPS (grounded prompt)" --> claude
+    be -. "logs" .-> logs
+
+    govt -- "pull daily prices" --> job
+    job -- "writes" --> pg
+    job -. "after ingest" .-> s3
+    pg -- "nightly pg_dump" --> s3
+    s3 -. "restore.sh" .-> rds
+    ecr -. "redeploy backend" .-> rds
 ```
-                                   ┌───────────────────────────┐
-                                   │   data.gov.in / Agmarknet │
-                                   │      (open govt. data)     │
-                                   └──────────────┬─────────────┘
-                                                  │ scheduled pull (nightly)
-                                                  ▼
-                     ┌────────────────────────────────────────────────┐
-                     │           GitHub Actions (scheduled)             │
-                     │   ingest_agmarknet.py  →  writes to Postgres     │
-                     └───────────────────────┬────────────────────────┘
-                                              ▼
- ┌───────────┐   HTTPS    ┌───────────────┐  reads/writes  ┌──────────────┐
- │  Browser   │──────────▶│    Frontend    │                │  PostgreSQL  │
- │ (React SPA)│◀──────────│  (nginx, SPA)  │                │   database   │
- └───────────┘            └───────┬────────┘                └──────▲───────┘
-                                   │ /api/* (reverse-proxied)        │
-                                   ▼                                 │
-                          ┌─────────────────┐   cache reads/writes   │
-                          │  Flask backend  │────────────────────────┘
-                          │   (REST API)    │
-                          └───┬─────────┬───┘
-                              │         │
-                     cache /  │         │  optional RAG call
-                  rate-limit  ▼         ▼
-                        ┌──────────┐ ┌───────────────────┐
-                        │  Redis   │ │  Anthropic Claude  │
-                        │          │ │  (POST /api/ask)   │
-                        └──────────┘ └────────────────────┘
+
+### Request flow — price lookup (cached read path)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Farmer
+    participant FE as React SPA (nginx)
+    participant API as Flask API
+    participant R as Redis
+    participant DB as PostgreSQL
+
+    U->>FE: Pick state / district / crop (Hindi, Telugu or English)
+    FE->>API: GET /api/prices?state_id=…&crop_id=…&lang=hi
+    API->>API: Rate-limit check (60/min)
+    API->>R: Lookup cache key (query string)
+    alt Cache hit (≤ 15 min old)
+        R-->>API: Cached JSON
+    else Cache miss
+        API->>DB: Join price_records → markets → districts → states
+        DB-->>API: Latest-date rows (paged)
+        API->>R: Store response (15 min TTL)
+    end
+    API-->>FE: JSON (names localised via name_hi / name_te)
+    FE-->>U: Price table / cards + trend chart
+```
+
+### Request flow — AI assistant (grounded RAG)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Farmer
+    participant FE as AskAssistant.jsx
+    participant API as POST /api/ask
+    participant RAG as services/rag.py
+    participant DB as PostgreSQL
+    participant LLM as Anthropic Claude
+
+    U->>FE: "आज गुंटूर में टमाटर का भाव?"
+    FE->>API: { question, lang }
+    API->>API: Validate (≤ 500 chars) + rate-limit (10/min)
+    API->>RAG: answer_question()
+    RAG->>DB: Fuzzy-match crop / state / district names
+    RAG->>DB: Fetch matching PriceRecords (last 14 days, up to 30 rows)
+    alt API key configured
+        RAG->>LLM: System prompt + retrieved records (answer ONLY from data)
+        LLM-->>RAG: Short answer in requested language
+    else No key / LLM error
+        RAG-->>API: Plain "latest record" fallback
+    end
+    API-->>FE: { answer, matched, records_used, assistant_enabled }
+    FE-->>U: Answer shown in chat panel
+```
+
+### Delivery pipeline & environments
+
+```mermaid
+flowchart LR
+    dev["Developer<br/>push / PR"] --> gh["GitHub Actions<br/>ci-cd.yml<br/>(mirrored by azure-pipelines.yml)"]
+
+    subgraph checks["Quality & security gates"]
+        direction TB
+        g1["gitleaks<br/>secret scan"]
+        g2["pytest + Jest"]
+        g3["pip-audit · npm audit"]
+        g1 --> g2 --> g3
+    end
+
+    gh --> checks --> build["Docker multi-stage builds<br/>backend + frontend"]
+    build --> trivy["Trivy image scan"] --> acr["Azure Container Registry"]
+    acr -- "merge to main" --> ca["Azure Container Apps<br/>backend + frontend"]
+
+    tf["Terraform<br/>terraform/ (Azure) · aws-dr/ (AWS)"] -. "provisions" .-> ca
+    tf -. "provisions" .-> pgr["PostgreSQL · Redis · Log Analytics"]
+
+    local["docker-compose.yml<br/>Postgres + Redis + backend + frontend"] -. "local dev" .-> dev
+```
+
+### Data model
+
+```mermaid
+erDiagram
+    STATE ||--o{ DISTRICT : has
+    DISTRICT ||--o{ MARKET : has
+    MARKET ||--o{ PRICE_RECORD : reports
+    CROP ||--o{ PRICE_RECORD : priced_as
+
+    STATE { int id PK
+            string name_en
+            string name_hi
+            string name_te }
+    DISTRICT { int id PK
+               string name_en
+               int state_id FK }
+    MARKET { int id PK
+             string name_en
+             int district_id FK }
+    CROP { int id PK
+           string name_en
+           string category }
+    PRICE_RECORD { int id PK
+                   int market_id FK
+                   int crop_id FK
+                   string variety
+                   string grade
+                   decimal min_price
+                   decimal max_price
+                   decimal modal_price
+                   date price_date
+                   string source }
 ```
 
 ### Components
